@@ -1565,7 +1565,8 @@ finalproject <- NISPUF20 %>%
 #how can we frame the exposure/outcome so that the result is a compelling and meaningful result? i.e. if exposure is first born status and outcome is days of breastfeeding will our RR be <1 and therefor not compelling?
 
 
-save
+write.table(finalproject)
+
 
 g <- dagitty("dag{
              x -> y;
