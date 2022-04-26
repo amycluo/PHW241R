@@ -1433,9 +1433,9 @@ NISPUF20$U19_FLU_24D <- factor(NISPUF20$U19_FLU_24D, levels=UTDlevels, labels=UT
 NISPUF20$U24_FLU_24D <- factor(NISPUF20$U24_FLU_24D, levels=UTDlevels, labels=UTDlabels)
 NISPUF20$P_UTD431H_ROUT_S <- factor(NISPUF20$P_UTD431H_ROUT_S, levels=UTDlevels, labels=UTDlabels)
 
-NISPUF20$PUTD4313 <- factor(NISPUF20$PUTD4313, levels=UTDlevels, labels=UTDlabels)
-NISPUF20$P_UTD431H3_ROUT_S <- factor(NISPUF20$P_UTD431H3_ROUT_S, levels=UTDlevels, labels=UTDlabels)
-NISPUF20$PUT43133 <- factor(NISPUF20$PUT43133, levels=UTDlevels, labels=UTDlabels)
+NISPUF20$PUTD4313 <- fmotheractor(NISPUF20$PUTD4313, levels=UTDlevels, labels=UTDlabels)
+NISPUF20$P_UTD431H3_ROUT_S <- factor(NISPUF20$P_UTD431H3_ROUT_S, levels=UTDlevels, labels=UTDlabels)0$P
+NISPUF20$PUT43133 <- factor(NISPUF2UT43133, levels=UTDlevels, labels=UTDlabels)
 NISPUF20$P_UTD431H314_ROUT_S <- factor(NISPUF20$P_UTD431H314_ROUT_S, levels=UTDlevels, labels=UTDlabels)
 NISPUF20$PU4313314 <- factor(NISPUF20$PU4313314, levels=UTDlevels, labels=UTDlabels)
 
@@ -1557,7 +1557,13 @@ library(ggdag)
 ##Subsetting the dataframe##
 ```{r}
 finalproject <- NISPUF20 %>%
-  select(c(1,2,12, 13, 14,23,25,26,29,30,33,34,40,41,45))
+  select(c(1,12,13,23,25,26,30,33,34,40,41,45))
+
+
+#what is our study design? cross sectional??
+#what is the best measure of association? RR? Preve/Prevu
+#how can we frame the exposure/outcome so that the result is a compelling and meaningful result? i.e. if exposure is first born status and outcome is days of breastfeeding will our RR be <1 and therefor not compelling?
+
 
 save
 
