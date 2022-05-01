@@ -1,0 +1,285 @@
+
+RUNNING OUR TESTS*
+
+```{r}
+#libraries
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(foreign)
+library(tidyverse)
+library(epitools)
+library(lmtest)
+library(tidyverse)
+library(tidyr)
+library(broom)
+library(epiR)
+library(dplyr)
+library(dagitty)
+library(ggdag)
+library(ggplot2)
+library(dplyr)
+install.packages("readxl")
+library("readxl")
+```
+
+```{r}
+# xlsx files
+finalproject <- read_excel("NISPUF20_dataset.xlsx")
+```
+
+What are we doing?
+The goal is to study the association between parity and breast feeding duration
+Hypothesis: First time mothers have shorter breast feeding duration compared to mothers of 2 or more children
+
+Steps:
+- Identify the exposure and outcome variables
+     - Exposure: FRSTBRN (NO/YES) binary variable
+     - Outcome: BF_ENDR06 (NA - numbers) in days
+          - Splitting into 4 categories:
+               - less than 1 month (30 days)
+               - 1 to less than 6 months (30 - 180 days)
+               - 6 months to less than 12 months (180 - 360 days)
+               - more than 12 months (360 - inf days)
+          - How to handle N/A?
+               - Omit
+     - Potential Confounders: 
+              DESCRIPTION     |  NAME      |     DATA FACTOR
+        ----------------------|------------|---------------------------------------------------------------
+          maternal age        | M_AGEGRP2  |  2 factors <=29 years and >= 30 years
+          marital status      | MARITAL2   |  2 factors MARRIED and "OTHERS"
+          maternal education  | EDUC1      |  4 factors (<12 yrs, 12 years, > 12 yrs-non-grad, college grad)
+          child race          | RACEETHK   |  4 factors (HISPANIC, BLACK, OTHER + MULTIPLE RACE, WHITE)
+          poverty status      | INCPOV1    |  4 factors (BELOW, ABOVE <= 75k, ABOVE > 75k, UNKNOWN)
+          WIC Benefits        | CWIC_01    |  5 factors (NO, YES, REFUSED, DON'T KNOW, NEVER HEARD OF WIC)
+
+- Analysis methods
+      - Create the 4 categories for breastfeeding duration
+      - Descriptive statistical analysis (mean, median, and mode to get central value and 
+      find the measure of our data spread)
+          - The distribution of breastfeeding duration
+          - Summarize breastfeeding by parity to get the group means and standard deviations
+          - Create a visualization that shows breastfeeding duration by parity
+          - Create a visualization to check the normality of our outcome variable
+      - Use logistic regression 
+          - the model estimates probability of breastfeeding for specific number of days (the 4 categories)
+          - compare models (looking at the estimate and p-value for each variable) to identity the statistically 
+          significant confounders
+      - Controling for confounding
+      - Sample matching
+
+```{r}
+
+#Omitting NA from the outcome variable 
+finalproject <- na.omit(finalproject)
+```
+
+```{r}
+#Switching variables to categories 
+finalproject$FRSTBRN <- factor(finalproject$FRSTBRN)
+finalproject$MARITAL2 <- factor(finalproject$MARITAL2)
+```
+
+```{r}
+summary(finalproject)
+```
+
+### Descriptive Analysis
+
+```{r}
+# The distribution of breastfeeding duration
+hist(finalproject$BF_ENDR06)
+
+#Creating a visualization that shows breastfeeding duration by parity
+ggplot(finalproject, aes(group=FRSTBRN, x=FRSTBRN, y = BF_ENDR06)) + 
+  geom_boxplot() +
+  theme_minimal(base_size = 10) 
+
+# or without a boxplot
+ggplot(finalproject, aes(x=FRSTBRN, y=BF_ENDR06)) +
+    geom_point(shape=1) +
+    labs(y = "Average Breastfeeding Duration ",
+         x = "First Born", title = "Breastfeeding Duration vs First Born")
+
+#Creating a visualization to check the normality of our outcome variable (breastfeeding duration)
+finalproject %>%
+  ggplot(aes(x=BF_ENDR06)) + geom_histogram(colour="black", fill="white") + facet_wrap(~FRSTBRN)+
+    labs(title = "A histogram plot for Breastfeeding Duration (in days) per parity")
+
+#or
+finalproject %>%
+  ggplot(aes(sample=BF_ENDR06)) + stat_qq(colour="black", fill="white") + facet_wrap(~FRSTBRN)+
+    labs(title = "A quantile-quantile plot for Breastfeeding Duration (in days) per parity")
+```
+- Summarize breastfeeding by parity to get the group means and standard deviations
+```{r}
+finalproject%>% 
+  group_by(FRSTBRN) %>% 
+  summarize(mean_sdp = mean(BF_ENDR06, na.rm=TRUE),sd_sdp=sd(BF_ENDR06, na.rm=TRUE))
+```
+
+### running the model using LINEAR REGRESSION 
+  (with a continuous outcome)
+```{r}
+library(knitr)
+library(foreign)
+library(tidyverse)
+library(epitools)
+library(lmtest)
+library(epiR)
+library(car)
+
+#Running linear regression model
+model_0 <- lm(BF_ENDR06 ~ FRSTBRN, data=finalproject)
+summary(model_0)
+
+model_1 <- lm(BF_ENDR06 ~ FRSTBRN + EDUC1, data = finalproject)
+summary(model_1)
+
+model_2 <- lm(BF_ENDR06 ~ FRSTBRN + CWIC_01, data = finalproject)
+summary(model_2)
+
+model_3 <- lm(BF_ENDR06 ~ FRSTBRN + INCPOV1, data = finalproject)
+summary(model_3)
+
+model_4 <- lm(BF_ENDR06 ~ FRSTBRN + M_AGEGRP2, data = finalproject)
+summary(model_4)
+
+model_sat <- lm(BF_ENDR06 ~ FRSTBRN + M_AGEGRP2 + CWIC_01 + INCPOV1 + EDUC1, 
+              data = finalproject)
+summary(model_sat)
+
+
+##comparing the restricted model to the saturated model
+anova(model_0, model_sat)
+```
+### Use logistic regression 
+- the model estimates probability of breastfeeding for specific number of days (the 4 categories)
+```{r}
+# # Creating the 4 outcome categories
+ finalproject_cat  <-
+   finalproject  %>%
+   dplyr::mutate(BF_ENDR06_CAT = case_when(
+     BF_ENDR06 < 30 ~ "< 1 month",
+     BF_ENDR06 < 180 ~ "1 - 6 months",
+     BF_ENDR06 < 360 ~ "6 - 12 months",
+     BF_ENDR06 >= 360 ~ "> 12 months"))
+
+#Omitting NA from the outcome variable 
+finalproject_cat <- na.omit(finalproject_cat)
+
+#Switching variables to categories 
+finalproject_cat$BF_ENDR06_CAT <- factor(finalproject_cat$BF_ENDR06_CAT)
+finalproject_cat$FRSTBRN <- factor(finalproject_cat$FRSTBRN)
+finalproject_cat$MARITAL2 <- factor(finalproject_cat$MARITAL2)
+```
+
+```{R}
+#Running logistic regression model
+model_00 <- glm(BF_ENDR06_CAT ~ FRSTBRN,
+                     family="binomial", data=finalproject_cat)
+summary(model_0)
+
+model_01 <- glm(BF_ENDR06_CAT ~ FRSTBRN + EDUC1, family = "binomial", data = finalproject_cat)
+summary(model_1)
+
+model_02 <- glm(BF_ENDR06_CAT ~ FRSTBRN + CWIC_01, family = "binomial", data = finalproject_cat)
+summary(model_2)
+
+model_03 <- glm(BF_ENDR06_CAT ~ FRSTBRN + INCPOV1, family = "binomial", data = finalproject_cat)
+summary(model_3)
+
+model_04 <- glm(BF_ENDR06_CAT ~ FRSTBRN + M_AGEGRP2, family = "binomial", data = finalproject_cat)
+summary(model_4)
+
+model_0sat <- glm(BF_ENDR06_CAT ~ FRSTBRN + EDUC1 + M_AGEGRP2 + INCPOV1 + CWIC_01, family = "binomial", data = finalproject_cat)
+summary(model_sat)
+
+
+##comparing the restricted model to the saturated model
+lrtest(model_0, model_00sat)
+
+## Running miltimodel regression model for 4 categories
+# library(nnet)
+# model_2 <- multinom(BF_ENDR06_CAT ~ FRSTBRN,
+#                      family="binomial", data=finalproject_cat)
+# 
+# summary(model_2)
+```
+- compare models (looking at the estimate and p-value for each variable) to identity the statistically 
+significant confounders
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##DAG##
+```{r}
+g <- dagitty("dag{
+             x -> y;
+             z2 -> y;
+             w1 -> y;
+             z1 -> y;
+             w2 -> x;
+             z2 <-> x;
+             z2 -> w1;
+             z1 -> w1;
+             v -> w1
+             v -> z1
+             z2 -> w2;
+             x [exposure];
+             y [outcome]}")
+
+dag(g)
+dag  <- dagify(g, y ~ x + s, a, e, m,
+  x ~ m,
+  s ~ r,
+  m ~ a,
+  e ~ s, a, r,
+  e ~~ x,
+  exposure = "x",
+  outcome = "y") %>%
+ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+    geom_dag_point() +
+    geom_dag_edges_arc() +
+    geom_dag_text() +
+    theme_dag()
+
+ggdag(dag)
+ggdag(dag) + theme_dag_blank()
+
+```
+
+
+```{r}
+# mode - median 
+# logistic regression since outcome categorical -> estimates probablilt of breastfeeding for specific number od days 
+# cross sectional study -OR or prevalence OR? attributable proportion? 
+# or RR
+# since exposure "Yes" to first born then duration lower - so lower RR (less than 1)
+# risk -> not breastfeeding for a long time [1- P()]
+# how to frame exposure & outcome -> try to account for confounding 
+
+#categories (look for backup studies)
+# category 1 -> less than two weeks 
+# category 2 ->
+# category 3 ->
+# category 4 -> 
+
+# discrete data for outcome so estimate treatment effect** - average days of breastfeeding 
+# after controlling for confounding
+# OR makes sense when we have categorical variable - SO OR IS NOT A GOOD INDICATOR
+```
+
+
