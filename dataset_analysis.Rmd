@@ -86,29 +86,29 @@ summary(finalproject)
 ### Descriptive Analysis
 
 ```{r}
-# The distribution of breastfeeding duration
-hist(finalproject$BF_ENDR06)
-
-#Creating a visualization that shows breastfeeding duration by parity
-ggplot(finalproject, aes(group=FRSTBRN, x=FRSTBRN, y = BF_ENDR06)) + 
-  geom_boxplot() +
-  theme_minimal(base_size = 10) 
-
-# or without a boxplot
-ggplot(finalproject, aes(x=FRSTBRN, y=BF_ENDR06)) +
-    geom_point(shape=1) +
-    labs(y = "Average Breastfeeding Duration ",
-         x = "First Born", title = "Breastfeeding Duration vs First Born")
-
-#Creating a visualization to check the normality of our outcome variable (breastfeeding duration)
-finalproject %>%
-  ggplot(aes(x=BF_ENDR06)) + geom_histogram(colour="black", fill="white") + facet_wrap(~FRSTBRN)+
-    labs(title = "A histogram plot for Breastfeeding Duration (in days) per parity")
-
-#or
-finalproject %>%
-  ggplot(aes(sample=BF_ENDR06)) + stat_qq(colour="black", fill="white") + facet_wrap(~FRSTBRN)+
-    labs(title = "A quantile-quantile plot for Breastfeeding Duration (in days) per parity")
+# # The distribution of breastfeeding duration
+# hist(finalproject$BF_ENDR06)
+# 
+# #Creating a visualization that shows breastfeeding duration by parity
+# ggplot(finalproject, aes(group=FRSTBRN, x=FRSTBRN, y = BF_ENDR06)) + 
+#   geom_boxplot() +
+#   theme_minimal(base_size = 10) 
+# 
+# # or without a boxplot
+# ggplot(finalproject, aes(x=FRSTBRN, y=BF_ENDR06)) +
+#     geom_point(shape=1) +
+#     labs(y = "Average Breastfeeding Duration ",
+#          x = "First Born", title = "Breastfeeding Duration vs First Born")
+# 
+# #Creating a visualization to check the normality of our outcome variable (breastfeeding duration)
+# finalproject %>%
+#   ggplot(aes(x=BF_ENDR06)) + geom_histogram(colour="black", fill="white") + facet_wrap(~FRSTBRN)+
+#     labs(title = "A histogram plot for Breastfeeding Duration (in days) per parity")
+# 
+# #or
+# finalproject %>%
+#   ggplot(aes(sample=BF_ENDR06)) + stat_qq(colour="black", fill="white") + facet_wrap(~FRSTBRN)+
+#     labs(title = "A quantile-quantile plot for Breastfeeding Duration (in days) per parity")
 ```
 - Summarize breastfeeding by parity to get the group means and standard deviations
 ```{r}
@@ -116,6 +116,31 @@ finalproject%>%
   group_by(FRSTBRN) %>% 
   summarize(mean_sdp = mean(BF_ENDR06, na.rm=TRUE),sd_sdp=sd(BF_ENDR06, na.rm=TRUE))
 ```
+
+## making interaction terms binary
+```{r}
+
+unique(finalproject$CWIC_01)
+finalproject <- finalproject %>%
+  mutate(wic = case_when(CWIC_01 == "YES" ~ 1, 
+                        CWIC_01 == "NO" | CWIC_01 == "NEVER HEARD OF WIC" ~ 0,
+                        TRUE ~ NA_real_))
+
+unique(finalproject$INCPOV1)
+finalproject <- finalproject %>%
+  mutate(ses = case_when(INCPOV1 == "ABOVE POVERTY, > $75K" | INCPOV1 == "ABOVE POVERTY, <= $75K" ~ 1, 
+                         INCPOV1 == "UNKNOWN" ~ NA_real_,
+                         TRUE ~ 0))
+
+unique(finalproject$EDUC1)
+finalproject <- finalproject %>%
+  mutate(ed = if_else(EDUC1 == "COLLEGE GRAD",1,0))
+
+finalproject <- finalproject %>%
+  dplyr::select(c(-INCPOV1, -CWIC_01, -EDUC1)) %>%
+  rename(bf = BF_ENDR06, maternal_age = M_AGEGRP2, marital_status = MARITAL2, race_eth = RACEETHK, rent_own = RENT_OWN, state = STATE, first_born = FRSTBRN, child_age = AGEGRP)
+```
+
 
 ### running the model using LINEAR REGRESSION 
   (with a continuous outcome)
@@ -129,22 +154,16 @@ library(epiR)
 library(car)
 
 #Running linear regression model
-model_0 <- lm(BF_ENDR06 ~ FRSTBRN, data=finalproject)
+model_0 <- lm(bf ~ first_born, data=finalproject)
 summary(model_0)
 
-model_1 <- lm(BF_ENDR06 ~ FRSTBRN + EDUC1, data = finalproject)
+model_1 <- lm(bf ~ first_born + ed, data = finalproject)
 summary(model_1)
 
-model_2 <- lm(BF_ENDR06 ~ FRSTBRN + CWIC_01, data = finalproject)
+model_2 <- lm(bf ~ first_born + maternal_age, data = finalproject)
 summary(model_2)
 
-model_3 <- lm(BF_ENDR06 ~ FRSTBRN + INCPOV1, data = finalproject)
-summary(model_3)
-
-model_4 <- lm(BF_ENDR06 ~ FRSTBRN + M_AGEGRP2, data = finalproject)
-summary(model_4)
-
-model_sat <- lm(BF_ENDR06 ~ FRSTBRN + M_AGEGRP2 + CWIC_01 + INCPOV1 + EDUC1, 
+model_sat <- lm(bf ~ first_born + maternal_age + ed + ses + wic, 
               data = finalproject)
 summary(model_sat)
 
@@ -158,45 +177,53 @@ anova(model_0, model_sat)
 # # Creating the 4 outcome categories
  finalproject_cat  <-
    finalproject  %>%
-   dplyr::mutate(BF_ENDR06_CAT = case_when(
-     BF_ENDR06 < 30 ~ "< 1 month",
-     BF_ENDR06 < 180 ~ "1 - 6 months",
-     BF_ENDR06 < 360 ~ "6 - 12 months",
-     BF_ENDR06 >= 360 ~ "> 12 months"))
+   dplyr::mutate(bf_cat = case_when(
+     bf < 30 ~ "< 1 month",
+     bf < 180 ~ "1 - 6 months",
+     bf < 360 ~ "6 - 12 months",
+     bf >= 360 ~ "> 12 months"))
 
 #Omitting NA from the outcome variable 
 finalproject_cat <- na.omit(finalproject_cat)
 
 #Switching variables to categories 
-finalproject_cat$BF_ENDR06_CAT <- factor(finalproject_cat$BF_ENDR06_CAT)
-finalproject_cat$FRSTBRN <- factor(finalproject_cat$FRSTBRN)
-finalproject_cat$MARITAL2 <- factor(finalproject_cat$MARITAL2)
+finalproject_cat$bf_cat <- factor(finalproject_cat$bf_cat)
+finalproject_cat$marital_status <- factor(finalproject_cat$first_born)
+finalproject_cat$marital_status <- factor(finalproject_cat$marital_status)
 ```
 
 ```{R}
 #Running logistic regression model
-model_00 <- glm(BF_ENDR06_CAT ~ FRSTBRN,
+model_00 <- glm(bf_cat ~ first_born,
                      family="binomial", data=finalproject_cat)
 summary(model_0)
 
-model_01 <- glm(BF_ENDR06_CAT ~ FRSTBRN + EDUC1, family = "binomial", data = finalproject_cat)
+model_01 <- glm(bf_cat ~ first_born + ed, family = "binomial", data = finalproject_cat)
 summary(model_1)
 
-model_02 <- glm(BF_ENDR06_CAT ~ FRSTBRN + CWIC_01, family = "binomial", data = finalproject_cat)
+model_02 <- glm(bf_cat ~ first_born + maternal_age, family = "binomial", data = finalproject_cat)
 summary(model_2)
 
-model_03 <- glm(BF_ENDR06_CAT ~ FRSTBRN + INCPOV1, family = "binomial", data = finalproject_cat)
-summary(model_3)
-
-model_04 <- glm(BF_ENDR06_CAT ~ FRSTBRN + M_AGEGRP2, family = "binomial", data = finalproject_cat)
-summary(model_4)
-
-model_0sat <- glm(BF_ENDR06_CAT ~ FRSTBRN + EDUC1 + M_AGEGRP2 + INCPOV1 + CWIC_01, family = "binomial", data = finalproject_cat)
-summary(model_sat)
-
+model_0sat <- glm(bf_cat ~ first_born + ed + maternal_age + ed:ses + ed:maternal_age, family = "binomial", data = finalproject_cat)
+summary(model_0sat)
 
 ##comparing the restricted model to the saturated model
-lrtest(model_0, model_00sat)
+lrtest(model_00, model_01, model_02, model_0sat)
+
+
+#assuming education is not a confounder
+model_0sat_alt <- glm(bf_cat ~ first_born + maternal_age + ed:maternal_age + ses:maternal_age, family = "binomial", data = finalproject_cat)
+summary(model_0sat_alt)
+
+#comparing the saturated model and the alternative saturated model (education not a confounder)
+lrtest(model_0sat, model_0sat_alt)
+
+### comparing model with WIC status to SES model ** THIS DOESN'T WORK BECAUSE WIC IS NOT CONNECTED TO ANY OF OUR PREDICTORS DIRECTLY, THEREFOR IT SHOULDNT BE IN OUR MODEL.
+# model_05 <- glm(bf_cat ~ first_born + ed + maternal_age + ed:ses, wic:ses + maternal_age:ses, family = "binomial", data = finalproject_cat)
+# model_06 <- glm(bf_cat ~ first_born + ed + maternal_age + ed:ses + ses:maternal_age, family = "binomial", data = finalproject_cat)
+# 
+# lrtest(model_05, model_06)
+
 
 ## Running miltimodel regression model for 4 categories
 # library(nnet)
@@ -225,39 +252,74 @@ significant confounders
 
 
 ##DAG##
+  where 
+  FB = first-born
+  BF = breastfeeding duration
+  AGE = maternal age
+  ED = maternal education level
+  SES = maternal poverty level
+  WIC = participation in WIC program
+  RACE = race/ethnicity of child
+  RENT = rent/own status of mother
+  STATE = state of residence
+  WED = marital status
+  SUP = unmeasured maternal support
+  
 ```{r}
-g <- dagitty("dag{
-             x -> y;
-             z2 -> y;
-             w1 -> y;
-             z1 -> y;
-             w2 -> x;
-             z2 <-> x;
-             z2 -> w1;
-             z1 -> w1;
-             v -> w1
-             v -> z1
-             z2 -> w2;
-             x [exposure];
-             y [outcome]}")
 
-dag(g)
-dag  <- dagify(g, y ~ x + s, a, e, m,
-  x ~ m,
-  s ~ r,
-  m ~ a,
-  e ~ s, a, r,
-  e ~~ x,
-  exposure = "x",
-  outcome = "y") %>%
-ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-    geom_dag_point() +
-    geom_dag_edges_arc() +
-    geom_dag_text() +
-    theme_dag()
-
-ggdag(dag)
-ggdag(dag) + theme_dag_blank()
+bf_dag <- dagitty('dag{
+    FB [pos="0.5,1"]
+    BF [pos="2,1"]
+    AGE [pos="0.2,1.4"] 
+    ED [pos="0,0.8"]
+    SES [pos=".2,.4"]
+    RACE [pos ="1, 0.45"]
+    RENT [pos = "1.5, 0.6"]
+    STATE[pos = "1.5, 1.5"]
+    SUP[pos = "1.25, 1.05"]
+    FB -> BF
+    FB -> AGE
+    AGE -> FB
+    AGE -> BF
+    AGE -> ED
+    ED -> BF
+    ED -> AGE
+    SES -> BF
+    SES -> ED
+    SES -> AGE
+    RACE -> SES
+    RACE -> RENT
+    RACE -> ED
+    RENT -> SES
+    SES -> RENT
+    AGE -> RENT
+    STATE -> RENT
+    STATE -> ED
+    STATE -> ED
+    STATE -> BF
+    STATE -> SES
+    SUP -> BF
+    SUP -> ED
+    SUP -> RENT
+    SUP -> SES
+}')
+p <- ggdag::ggdag(bf_dag) + theme_dag()
+p$layers[[3]]$mapping <- 
+  aes(colour = c("Observed", "Unobserved")[as.numeric(name == "SUP") + 1])
+p + scale_color_manual(values = c("black", "#cc2055")) +
+  theme(legend.position = c(0.8, 0.8))
+  
+# REMOVED FROM THE DAGG
+      # WIC [pos="1, 1.5"]
+     # RENT -> WIC
+      # SES -> WIC
+     # WIC -> SES
+     # WIC -> BF
+    # RACE -> WIC
+   #WED[pos = "0.5, 2.0"]
+   # WED -> BF
+   #   WED -> SUP
+# ED -> FB
 
 ```
 
